@@ -43,64 +43,66 @@ function flight(l, x, y, z0, z1, dir, n, rail) {
 // ---------------------------------------------------------------- 1: the stairwell
 function stairwell() {
   const l = mk();
-  const W = 2.6, N = 10, FL = N * RUN, FH = N * RISE;   // a flight is 5 long and 2.5 high
+  // Flights are W wide, 5 long and 2.5 high; landings are D deep. At W = 2 the couch only just
+  // fits across a landing, so the corners want the couch lifted over the railing.
+  const W = 2, D = 2.2, N = 10, FL = N * RUN, FH = N * RISE;
   l.theme = 'indoor';
 
   // lobby
   add(l, -8, -0.5, 0, 0, 0, W, 'checker');
   add(l, -8.3, 0, 0, -8, 3.4, W, 'paper');
-  add(l, -8.3, 0, -0.3, -2.9, 3.4, 0, 'paper');
-  add(l, -8.3, 0, W, 8.3, 14, W + 0.3, null, { vis: 0 });
+  add(l, -8.3, 0, -0.3, -D - 0.3, 3.4, 0, 'paper');
+  add(l, -8.3, 0, W, FL + D + 0.3, 14, W + 0.3, null, { vis: 0 });
   prop(l, 'door', -6.2, 0, 0, { label: 'EXIT' });
   prop(l, 'plant', -7.4, 0, 0.5);
   prop(l, 'frame', -4.2, 1.5, 0, { c: '#e0693e' });
 
   // flight 1 east, landing A, flight 2 west, landing B, flight 3 east, landing C
   flight(l, 0, 0, 0, W, 1, N);
-  add(l, FL, -0.5, -W, FL + 3, FH, W, 'landing');
-  add(l, FL + 3, 0, -W, FL + 3.3, FH + 3.2, W, 'paper');
+  add(l, FL, -0.5, -W, FL + D, FH, W, 'landing');
+  add(l, FL + D, 0, -W, FL + D + 0.3, FH + 3.2, W, 'paper');
   flight(l, FL, FH, -W, 0, -1, N, -0.12);
-  add(l, -2.6, -0.5, -2 * W, 0, 2 * FH, 0, 'landing');
-  add(l, -2.6, 2 * FH, -0.12, 0, 2 * FH + 1, 0, 'rail');
-  add(l, -2.9, 0, -2 * W, -2.6, 2 * FH + 3.2, 0, 'paper');
+  add(l, -D, -0.5, -2 * W, 0, 2 * FH, 0, 'landing');
+  add(l, -D, 2 * FH, -0.12, 0, 2 * FH + 1, 0, 'rail');
+  add(l, -D - 0.3, 0, -2 * W, -D, 2 * FH + 3.2, 0, 'paper');
   flight(l, 0, 2 * FH, -2 * W, -W, 1, N, -W - 0.12);
-  add(l, FL, -0.5, -2 * W, FL + 3, 3 * FH, -W, 'landing');
-  add(l, FL, 3 * FH, -W - 0.12, FL + 3, 3 * FH + 1, -W, 'rail');
-  prop(l, 'frame', 6.5, 2 * FH + 1.2, -2 * W, { c: '#2a9d8f' });   // on the back wall
+  add(l, FL, -0.5, -2 * W, FL + D, 3 * FH, -W, 'landing');
+  add(l, FL, 3 * FH, -W - 0.12, FL + D, 3 * FH + 1, -W, 'rail');
+  prop(l, 'frame', FL + D / 2, 2 * FH + 1.2, -2 * W, { c: '#2a9d8f' });   // on the back wall
 
   // top hallway, then the apartment
-  const Y = 3 * FH;
-  add(l, FL + 3, -0.5, -2 * W, 20, Y, -W, 'hall');
-  add(l, FL + 3, Y, -W, 20, Y + 5, -W + 0.3, null, { vis: 0 });
-  add(l, -2.9, 0, -2 * W - 0.3, 20, Y + 3.6, -2 * W, 'paper');
+  const Y = 3 * FH, HX = FL + D, AN = -2 * W - 2.4, AS = -W + 1.2, AC = (AN + AS) / 2;
+  add(l, HX, -0.5, -2 * W, 20, Y, -W, 'hall');
+  add(l, HX, Y, -W, 20, Y + 5, -W + 0.3, null, { vis: 0 });
+  add(l, -D - 0.3, 0, -2 * W - 0.3, 20, Y + 3.6, -2 * W, 'paper');
   bar(l, 11.35, Y, -2 * W, 11.65, -W);
   add(l, 16.6, Y, -2 * W, 17.4, Y + 0.7, -W, 'crate');
   prop(l, 'frame', 14, Y + 1.6, -2 * W, { c: '#e9b44c' });
   prop(l, 'door', 9.4, Y, -2 * W, { label: '19' });
   prop(l, 'plant', 19.3, Y, -2 * W + 0.5);
 
-  add(l, 20, -0.5, -2 * W - 2.4, 28, Y, -1.2, 'apt');
-  add(l, 20, Y, -2 * W - 2.7, 28.3, Y + 3.6, -2 * W - 2.4, 'paper2');
-  add(l, 28, Y, -2 * W - 2.4, 28.3, Y + 3.6, -1.2, 'paper2');
-  add(l, 19.85, Y, -2 * W - 2.4, 20.15, Y + 3.6, -2 * W, 'paper2');
-  add(l, 19.85, Y, -W, 20.15, Y + 3.6, -1.2, 'paper2', { vis: 1.2 });
-  add(l, 20, Y, -1.2, 28.3, Y + 5, -0.9, null, { vis: 0 });
-  prop(l, 'rug', 24.5, Y, -4.8, { w: 4.6, d: 3.4 });
-  prop(l, 'plant', 27.3, Y, -7);
-  prop(l, 'frame', 24.5, Y + 1.7, -2 * W - 2.4, { c: '#ff5c8a', w: 1.6 });
-  prop(l, 'lamp', 21.2, Y + 3.3, -7);
-  l.goal = zone(22.5, Y - 0.2, -6.5, 26.5, Y + 2.5, -3.1);
+  add(l, 20, -0.5, AN, 28, Y, AS, 'apt');
+  add(l, 20, Y, AN - 0.3, 28.3, Y + 3.6, AN, 'paper2');
+  add(l, 28, Y, AN, 28.3, Y + 3.6, AS, 'paper2');
+  add(l, 19.85, Y, AN, 20.15, Y + 3.6, -2 * W, 'paper2');
+  add(l, 19.85, Y, -W, 20.15, Y + 3.6, AS, 'paper2', { vis: 1.2 });
+  add(l, 20, Y, AS, 28.3, Y + 5, AS + 0.3, null, { vis: 0 });
+  prop(l, 'rug', 24.5, Y, AC, { w: 4.6, d: 3.4 });
+  prop(l, 'plant', 27.3, Y, AN + 0.6);
+  prop(l, 'frame', 24.5, Y + 1.7, AN, { c: '#ff5c8a', w: 1.6 });
+  prop(l, 'lamp', 21.2, Y + 3.3, AN + 0.6);
+  l.goal = zone(22.5, Y - 0.2, AC - 1.7, 26.5, Y + 2.5, AC + 1.7);
 
-  cp(l, null, [-3, 0, 1.3], [-6.3, 0, 1.3]);
-  cp(l, zone(5.3, FH - 0.2, -W, 8, FH + 2.5, W), [6.6, FH, -1.65], [6.6, FH, 1.65]);
-  cp(l, zone(-2.6, 2 * FH - 0.2, -2 * W, -0.3, 2 * FH + 2.5, 0), [-1.3, 2 * FH, -4.25], [-1.3, 2 * FH, -0.95]);
-  cp(l, zone(8, Y - 0.2, -2 * W, 10, Y + 2.5, -W), [9.2, Y, -3.9], [5.9, Y, -3.9]);
+  cp(l, null, [-3, 0, W / 2], [-6.3, 0, W / 2]);
+  cp(l, zone(FL + 0.3, FH - 0.2, -W, HX, FH + 2.5, W), [FL + D / 2, FH, -1.6], [FL + D / 2, FH, 1.6]);
+  cp(l, zone(-D, 2 * FH - 0.2, -2 * W, -0.3, 2 * FH + 2.5, 0), [-D / 2, 2 * FH, -2 * W + 0.4], [-D / 2, 2 * FH, -0.5]);
+  cp(l, zone(HX, Y - 0.2, -2 * W, HX + 2, Y + 2.5, -W), [HX + 1.2, Y, -1.5 * W], [HX - 2.1, Y, -1.5 * W]);
 
   hint(l, zone(-8, -1, 0, -1, 3, W), 'You each hold one end. Walk it up the stairs, together.');
-  hint(l, zone(3, 1, 0, 8, 6, W), 'Tight corner! Swing wide, or both hold {up} to lift the couch over the railing. And yell {shout}.');
-  hint(l, zone(8.5, Y - 1, -2 * W, 10.6, Y + 3, -W), 'Low pipe. Both hold {down} to duck under it.');
+  hint(l, zone(3, 1, 0, HX, 6, W), 'Tight corner! Both hold {up} to lift the couch over the railing as you turn. And yell {shout}.');
+  hint(l, zone(HX + 0.5, Y - 1, -2 * W, 10.6, Y + 3, -W), 'Low pipe. Both hold {down} to duck under it.');
   hint(l, zone(13, Y - 1, -2 * W, 16, Y + 3, -W), 'Boxes! Hold {up} to raise the couch, then {jump} over them.');
-  hint(l, zone(19, Y - 1, -8, 22, Y + 3, -1), 'Onto the rug with it!');
+  hint(l, zone(19, Y - 1, AN, 22, Y + 3, AS), 'Onto the rug with it!');
   return l;
 }
 
