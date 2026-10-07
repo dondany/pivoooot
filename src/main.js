@@ -216,7 +216,7 @@ function win(time) {
   audio.win(); view.confetti(m.x, m.y, m.z);
   $('hint').classList.remove('show');
   const record = saveBest(l.id, time), last = g.index === LEVELS.length - 1;
-  $('win-title').textContent = last ? 'Returned!' : "It's in!";
+  $('win-title').textContent = l.done;
   $('win-stats').innerHTML = `<div><b>${fmt(time)}</b><span>${record ? 'new best!' : 'time'}</span></div><div><b>${s.shouts}</b><span>pivots yelled</span></div><div><b>${s.falls + s.bonks}</b><span>mishaps</span></div>`;
   $('win-quip').textContent = s.shouts === 0 ? 'Not one "PIVOT". Are you two even friends?'
     : s.shouts > 25 ? "I don't think it's gonna pivot any more."

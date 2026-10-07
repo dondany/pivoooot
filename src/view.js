@@ -1,6 +1,7 @@
 // three.js side: turns a Game into a picture. Reads game state every frame, never writes it.
 import * as THREE from 'three';
 import { Bean, Couch, toon } from './models.js';
+import { spinAngle } from './physics.js';
 
 // ---- painted textures (all drawn on canvases, tiled in world units) ----
 function tex(px, size, draw) {
@@ -41,6 +42,7 @@ const PAT = {
     fill(g, s, a); g.strokeStyle = b; g.lineWidth = s * 0.18;
     for (let i = -1; i < 3; i++) { g.beginPath(); g.moveTo(i * s / 2, s); g.lineTo(i * s / 2 + s, 0); g.stroke(); }
   }),
+  belt: () => tex(64, 1, (g, s) => { fill(g, s, '#4a3f4f'); g.fillStyle = '#665870'; g.fillRect(0, 0, s * 0.14, s); g.fillRect(s * 0.5, 0, s * 0.14, s); }),
   windows: (wall, win, lit) => tex(128, 4, (g, s) => {
     fill(g, s, wall);
     for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) { g.fillStyle = (r + c) % 2 ? lit : win; g.fillRect(c * s / 2 + s * 0.12, r * s / 2 + s * 0.1, s * 0.26, s * 0.3); }
@@ -70,6 +72,15 @@ const MAT_DEFS = {
   dirt: () => ({ top: PAT.speckle('#c98d55', '#a8703d', 3), side: PAT.speckle('#a8703d', '#8a5a30', 3) }),
   pit: () => { const m = toon(0x4a2f33); return { top: m, side: m }; },
   plank: () => ({ top: PAT.planks('#e2b06c', '#b98445', 1.2), side: toon(0xb98445) }),
+  grass: () => { const m = PAT.speckle('#9cc45f', '#86b24c', 5); return { top: m, side: m }; },
+  lawn: () => ({ top: PAT.speckle('#a9cf68', '#8fb955', 3), side: toon(0x8a5a30) }),
+  path: () => ({ top: PAT.speckle('#f1d6a0', '#dfbd80', 3), side: toon(0xb98c56) }),
+  water: () => { const m = toon(0x55bcc9); return { top: m, side: m }; },
+  hedge: () => { const m = PAT.speckle('#3f9b6d', '#2f8259', 1.5); return { top: m, side: m }; },
+  post: () => { const m = toon(0x6b5a6e); return { top: m, side: m }; },
+  metal: () => ({ top: PAT.slabs('#9fc1bb', '#7fa5a0', 2), side: toon(0x4f6f72) }),
+  panel: () => { const m = PAT.stripes('#4f9390', '#427f7d', 1.6); return { top: toon(0x386b6a), side: m }; },
+  belt: () => ({ top: PAT.belt(), side: toon(0x2f2630) }),
 };
 const mats = {};
 const mat = name => mats[name] || (mats[name] = (MAT_DEFS[name] || MAT_DEFS.checker)());
@@ -149,6 +160,16 @@ const LOOKS = {
       w.rotation.z = Math.PI / 2; g.add(w);
     }
     for (const x of [-0.6, 0.6]) g.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff3b0 }), x, -0.12, 1.9 * dir));
+    return g;
+  },
+  goose() {
+    const g = new THREE.Group(), white = toon(0xffffff), body = mesh(new THREE.SphereGeometry(0.3, 12, 10), white, 0, -0.05, -0.05);
+    body.scale.set(0.85, 0.85, 1.3);
+    const beak = mesh(new THREE.ConeGeometry(0.06, 0.2, 8), toon(0xf07a2a), 0, 0.5, 0.42);
+    beak.rotation.x = Math.PI / 2;
+    g.add(body, mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.5, 8), white, 0, 0.27, 0.22), mesh(new THREE.SphereGeometry(0.13, 10, 8), white, 0, 0.52, 0.25), beak);
+    for (const x of [-0.07, 0.07]) g.add(mesh(new THREE.SphereGeometry(0.03, 6, 5), toon(0x2b1a12), x, 0.57, 0.34));
+    g.userData.face = true;       // turns to face the way it is going
     return g;
   },
   roomba(b) {
@@ -234,6 +255,12 @@ const PROPS = {
     g.add(mesh(new THREE.ConeGeometry(0.2, 0.6, 10), toon(0xf07a2a), 0, 0.33, 0), box(0.46, 0.05, 0.46, 0xf07a2a, 0, 0.025, 0), mesh(new THREE.CylinderGeometry(0.105, 0.135, 0.1, 10), toon(0xffffff), 0, 0.36, 0));
     return g;
   },
+  tree() {
+    const g = new THREE.Group(), leaf = toon(0x4fa76b);
+    g.add(mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.8, 8), toon(0x8a5a30), 0, 0.9, 0), mesh(new THREE.SphereGeometry(1.25, 12, 10), leaf, 0, 2.6, 0),
+      mesh(new THREE.SphereGeometry(0.85, 10, 8), toon(0x5cb478), 0.7, 3.3, 0.3), mesh(new THREE.SphereGeometry(0.75, 10, 8), leaf, -0.75, 2.2, 0.4));
+    return g;
+  },
   crane() {
     const g = new THREE.Group(), m = toon(0xe9b44c);
     g.add(box(0.7, 16, 0.7, m, 0, 8, 0), box(18, 0.6, 0.6, m, 3, 15.6, 0), box(2.2, 1.4, 1.6, 0xd9482f, -4, 15.4, 0));
@@ -249,7 +276,33 @@ const PROPS = {
   },
 };
 
+// ---- models for the things that turn (level.spins). Built around the axis; the view turns them. ----
+const SPINS = {
+  sweeper(s) {
+    const g = new THREE.Group(), red = toon(0xd9482f), cream = toon(0xfbe9c3);
+    for (const [turn, y0, y1] of s.arms) {
+      const arm = new THREE.Group(), y = (y0 + y1) / 2, n = Math.round(s.len / 0.6);
+      arm.rotation.y = -turn * Math.PI * 2;
+      for (let i = 0; i < n; i++) arm.add(box(s.len / n, y1 - y0, 0.24, i % 2 ? cream : red, 0.3 + (i + 0.5) * (s.len - 0.2) / n, y, 0));
+      arm.add(box(0.5, 0.12, 0.12, 0x3a2a35, 0.25, y, 0), mesh(new THREE.SphereGeometry(0.2, 10, 8), red, s.len + 0.1, y, 0));
+      g.add(arm);
+    }
+    g.add(mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.18, 16), toon(0xe9b44c), 0, s.post + 0.09, 0), mesh(new THREE.SphereGeometry(0.16, 10, 8), red, 0, s.post + 0.26, 0));
+    return g;
+  },
+  bridge(s) {
+    const g = new THREE.Group(), stripes = PAT.hazard('#e9b44c', '#3a2a22');
+    g.add(boxMesh({ x0: -s.half + 0.3, x1: s.half - 0.3, y0: -0.3, y1: 0, z0: -0.8, z1: 0.8, mat: 'plank' }, 0.3));
+    for (const x of [-1, 1]) g.add(box(0.3, 0.3, 1.6, stripes, x * (s.half - 0.15), -0.15, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.45, 0.6, 10, 12), toon(0x6b5a6e), 0, -5.3, 0));
+    g.traverse(c => { c.receiveShadow = true; });
+    return g;
+  },
+};
+
 const THEMES = {
+  park: { sky: ['#ffbf85', '#fff0c8'], fog: 0xffe6b8, sun: 0xfff3d0, hemi: [0xfff6dc, 0x7aa05a] },
+  factory: { sky: ['#4a3550', '#a8686a'], fog: 0x7d5266, sun: 0xffe6c8, hemi: [0xffe2cc, 0x3f6f78] },
   indoor: { sky: ['#f39c5a', '#fbdcaa'], fog: 0xf7c58a, sun: 0xfff1d6, hemi: [0xffe9c7, 0xc7623a] },
   hall: { sky: ['#e97f5f', '#f9d59b'], fog: 0xf3b683, sun: 0xfff1d6, hemi: [0xffe9c7, 0x8a5fbf] },
   street: { sky: ['#ff8a5c', '#ffd9a0'], fog: 0xffc08a, sun: 0xffe0b0, hemi: [0xffd9b0, 0x8a4a6a] },
@@ -295,7 +348,7 @@ export class View {
       this.world.remove(o);
       o.traverse(c => { if (c.geometry) c.geometry.dispose(); });
     }
-    this.movers = []; this.bobbers = [];
+    this.movers = []; this.bobbers = []; this.spinners = []; this.belts = [];
     const l = game.level, th = THEMES[l.theme] || THEMES.indoor;
     const sky = document.createElement('canvas');
     sky.width = 4; sky.height = 256;
@@ -319,8 +372,19 @@ export class View {
       if (b.mat === 'rail' || b.mat === 'crate') { this.world.add((b.mat === 'rail' ? railMesh : crateMesh)(b)); continue; }
       const m = boxMesh(b, h);
       if (b.deco) m.castShadow = false;
+      if (b.belt) {                 // its own copy of the texture, so it can scroll
+        const top = m.material[2].clone(), size = m.material[2].userData.size;
+        top.map = top.map.clone(); top.map.needsUpdate = true;
+        m.material = m.material.slice(); m.material[2] = top;
+        this.belts.push({ b, map: top.map, size });
+      }
       this.world.add(m);
       if (b.move) this.movers.push({ b, m, box: true });
+    }
+    for (const s of l.spins) {
+      const m = SPINS[s.kind](s);
+      m.position.set(s.x, s.y, s.z);
+      this.world.add(m); this.spinners.push({ s, m });
     }
     for (const p of l.props) {
       const o = PROPS[p.type](p);
@@ -335,7 +399,12 @@ export class View {
   update(game, dt, attract) {
     this.t += dt;
     const t = this.t, c = game.couch;
-    for (const { b, m } of this.movers) m.position.set((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
+    for (const { b, m } of this.movers) {
+      m.position.set((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
+      if (m.userData.face && (b.dx || b.dz)) m.rotation.y = Math.atan2(b.dx, b.dz);
+    }
+    for (const { s, m } of this.spinners) m.rotation.y = spinAngle(s, game.time);
+    for (const q of this.belts) { q.map.offset.x -= q.b.belt[0] * dt / q.size; q.map.offset.y += q.b.belt[1] * dt / q.size; }
     for (const o of this.bobbers) { o.position.y = o.userData.bob + Math.sin(t * 3) * 0.25; o.rotation.y = t * 1.5; o.visible = !game.done; }
     this.couch.update(dt, c);
     this.beans.forEach((b, i) => b.update(dt, game.players[i], game.players[1 - i], this.couch.grips[i], t));

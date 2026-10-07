@@ -21,6 +21,7 @@ export const PHYS = {
   TOW_GRIP: 0.3,               // how much of their footing a towed bean keeps
 
   STUN: 0.8, BONK_V: 6.5, BONK_UP: 6, SAFE: 1.0,
+  GRACE: 0.12,                 // a hazard low enough to hop only counts once it is this deep into a bean
 };
 
 export const NET = {

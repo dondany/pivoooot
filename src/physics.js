@@ -13,17 +13,33 @@ export function makePlayer(i) {
   };
 }
 
+// The angle of something turning about a vertical axis (a three.js rotation.y): steadily, or
+// with s.steps equal turns per period and a pause after each (s.move = the share of a step
+// spent turning).
+export function spinAngle(s, t) {
+  const u = t / s.period + (s.phase || 0), dir = s.dir || 1;
+  if (!s.steps) return u * 2 * Math.PI * dir;
+  const q = u * s.steps, k = Math.floor(q), w = Math.min(1, (q - k) / (s.move || 0.4));
+  return (k + w * w * (3 - 2 * w)) * 2 * Math.PI / s.steps * dir;
+}
+
 // Moving boxes follow the level clock, so both players see them in the same place.
 export function updateMovers(movers, t) {
   for (const b of movers) {
     const m = b.move;
-    let u = t / m.period + (m.phase || 0);
-    u -= Math.floor(u);
-    let f;
-    if (m.mode === 'loop') f = u;
-    else if (m.mode === 'slam') f = u < 0.12 ? u / 0.12 : u < 0.42 ? 1 : u < 0.6 ? 1 - (u - 0.42) / 0.18 : 0;
-    else f = 0.5 - 0.5 * Math.cos(u * 2 * Math.PI);
-    const nx = b.bx + m.to[0] * f, ny = b.by + m.to[1] * f, nz = b.bz + m.to[2] * f;
+    let nx, ny, nz;
+    if (m.mode === 'orbit') {       // rides round a spin at (u, v) in the spin's own frame
+      const a = spinAngle(m.spin, t), c = Math.cos(a), s = Math.sin(a);
+      nx = m.spin.x + m.u * c + m.v * s - b.sx / 2; ny = b.by; nz = m.spin.z - m.u * s + m.v * c - b.sz / 2;
+    } else {
+      let u = t / m.period + (m.phase || 0);
+      u -= Math.floor(u);
+      let f;
+      if (m.mode === 'loop') f = u;
+      else if (m.mode === 'slam') f = u < 0.12 ? u / 0.12 : u < 0.42 ? 1 : u < 0.6 ? 1 - (u - 0.42) / 0.18 : 0;
+      else f = 0.5 - 0.5 * Math.cos(u * 2 * Math.PI);
+      nx = b.bx + m.to[0] * f; ny = b.by + m.to[1] * f; nz = b.bz + m.to[2] * f;
+    }
     let dx = nx - b.x0, dy = ny - b.y0, dz = nz - b.z0;
     if (!b.started || Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 2) dx = dy = dz = 0;   // first frame, or a loop wrapping round
     b.started = true;
@@ -83,19 +99,20 @@ export function integrate(p, dt, boxes) {
 
   const g = p.ground;
   if (p.grounded && g && g.move) { p.x += g.dx; p.y += g.dy; p.z += g.dz; }   // ride a moving floor
+  if (p.grounded && g && g.belt) { p.x += g.belt[0] * dt; p.z += g.belt[1] * dt; }   // or a conveyor belt
   p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
 }
 
 // Push a bean out of the boxes. Returns whether it ended up standing on something.
 export function collide(p, boxes) {
-  const R = P.R, R2 = R * R, H = p.height;
+  const R = P.R, R2 = R * R, H = p.height, core = (R - P.GRACE) * (R - P.GRACE);
   // Walls first, so a railing beside a step stops you before the step can lift you.
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
     if (p.y >= b.y1 || p.y + H <= b.y0) continue;
     const dx = p.x - clamp(p.x, b.x0, b.x1), dz = p.z - clamp(p.z, b.z0, b.z1), d2 = dx * dx + dz * dz;
     if (d2 >= R2) continue;
-    if (b.hazard) p.hit = b;
+    if (b.hazard && (b.y1 - p.y > P.STEP || d2 < core)) p.hit = b;   // a clipped toe on a sweeper arm is forgiven
     if (b.y1 - p.y <= P.STEP) continue;                       // a floor or a step: second pass
     if (p.vy > 0 && p.y + H - b.y0 <= 0.35) continue;         // a ceiling: second pass
     let nx = 0, nz = 0, push;

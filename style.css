@@ -48,14 +48,16 @@ kbd { display: inline-block; min-width: 1.7em; margin: 0 2px; padding: 1px 7px; 
 .status .code { font-family: var(--display); font-size: 40px; letter-spacing: .12em; color: var(--orange); line-height: 1.1; display: block; }
 .status .dots::after { content: ''; animation: dots 1.2s steps(4) infinite; }
 @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
-.levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; width: min(820px, 100%); }
-.level { flex: 1 1 200px; max-width: 260px; text-align: left; font-family: var(--body); color: var(--brown); background: var(--cream); border: 4px solid var(--brown); border-radius: 22px; padding: 12px 14px 14px; cursor: pointer;
+.levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: min(790px, 100%); }
+.level { flex: 1 1 200px; max-width: 250px; text-align: left; font-family: var(--body); color: var(--brown); background: var(--cream); border: 4px solid var(--brown); border-radius: 22px; padding: 12px 14px 14px; cursor: pointer;
   box-shadow: 0 6px 0 var(--brown); transition: transform .1s, box-shadow .1s; }
 .level:hover { transform: translateY(-3px) rotate(-1deg); box-shadow: 0 9px 0 var(--brown); }
 .level:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--brown); }
 .level .num { font-family: var(--display); font-size: 34px; line-height: 1; color: var(--orange); }
 .level:nth-child(2) .num { color: var(--teal); }
 .level:nth-child(3) .num { color: var(--pink); }
+.level:nth-child(4) .num { color: #5fa04f; }
+.level:nth-child(5) .num { color: #8a5fbf; }
 .level h3 { margin: 2px 0; font-size: 20px; }
 .level p { margin: 0; font-size: 15px; opacity: .85; }
 .level .best { margin-top: 8px; font-weight: 700; font-size: 14px; }

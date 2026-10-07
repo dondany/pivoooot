@@ -7,10 +7,12 @@
 //   deco: true  drawn, never collided with
 //   move: { to: [dx,dy,dz], period, phase, mode: 'ping' | 'loop' | 'slam' }
 //   hazard: true  touching it sends a bean flying
-//   look: 'car' | 'roomba' | 'ball' | 'lift' | 'door'   a model instead of a plain box
+//   look: 'car' | 'roomba' | 'ball' | 'lift' | 'door' | 'goose'   a model instead of a plain box
+//   belt: [vx, vz]   a conveyor: carries whoever stands on it
+// Things that turn (sweeper arms, turning bridges) are built by sweeper() and turnBridge() below.
 // Hint texts use {up} {down} {jump} {shout}, filled in with the player's actual keys.
 
-const mk = () => ({ boxes: [], cps: [], hints: [], props: [], killY: -30 });
+const mk = () => ({ boxes: [], cps: [], hints: [], props: [], spins: [], killY: -30 });
 const add = (l, x0, y0, z0, x1, y1, z1, mat, o) => {
   const b = { x0, y0, z0, x1, y1, z1, mat, ...o };
   l.boxes.push(b);
@@ -27,6 +29,37 @@ function bar(l, x0, y, z0, x1, z1) {
   const o = { deco: true };
   if (z1 - z0 > x1 - x0) { add(l, x0, y, z0, x1, y + 1.1, z0 + 0.14, 'pipe', o); add(l, x0, y, z1 - 0.14, x1, y + 1.1, z1, 'pipe', o); }
   else { add(l, x0, y, z0, x0 + 0.14, y + 1.1, z1, 'pipe', o); add(l, x1 - 0.14, y, z0, x1, y + 1.1, z1, 'pipe', o); }
+}
+
+// ---- things that turn about a vertical axis ----
+// The physics has no rotated shapes: a turning thing is a set of small boxes riding round its
+// centre ('orbit' movers, see physics.js). The view draws one model per spin and turns it.
+function spin(l, x, y, z, o) {
+  const s = { x, y, z, period: 6, ...o };
+  l.spins.push(s);
+  return s;
+}
+const orbit = (l, s, u, v, y0, y1, size, o) => add(l, s.x + u - size / 2, y0, s.z + v - size / 2, s.x + u + size / 2, y1, s.z + v + size / 2, null,
+  { move: { mode: 'orbit', spin: s, u, v }, ...o });
+
+// A post with arms sweeping round it. arms: [turn (0..1 round the post), bottom, top] each;
+// heights are above y. Touching an arm sends a bean flying; the couch just gets shoved.
+function sweeper(l, x, y, z, len, arms, o = {}) {
+  const s = spin(l, x, y, z, { kind: 'sweeper', len, arms, post: 1.2, ...o });
+  add(l, x - 0.3, y, z - 0.3, x + 0.3, y + s.post, z + 0.3, 'post');
+  for (const [turn, y0, y1] of arms) {
+    const a = turn * 2 * Math.PI;
+    for (let r = 0.5; r <= len + 0.01; r += 0.24) orbit(l, s, r * Math.cos(a), r * Math.sin(a), y + y0, y + y1, 0.24, { hazard: true });
+  }
+  return s;
+}
+
+// A plank, 2 * half long and 1.6 wide, turning about its middle in quarter turns with a pause
+// between. With steps: 4 it lies east-west, then north-south, and so on.
+function turnBridge(l, x, y, z, half, o = {}) {
+  const s = spin(l, x, y, z, { kind: 'bridge', half, steps: 4, move: 0.4, period: 16, ...o });
+  for (let u = -half + 0.25; u < half; u += 0.5) for (const v of [-0.5, 0, 0.5]) orbit(l, s, u, v, y - 0.3, y, 0.6);
+  return s;
 }
 
 const RUN = 0.5, RISE = 0.25;
@@ -235,8 +268,125 @@ function crosstown() {
   return l;
 }
 
+// ---------------------------------------------------------------- 4: the park
+function park() {
+  const l = mk();
+  l.theme = 'park';
+  l.killY = -3;
+  const hedge = (x0, z0, x1, z1, vis = 0.5) => add(l, x0, 0, z0, x1, 5, z1, 'hedge', { vis });   // solid well above what is drawn
+  const fence = (x0, z0, x1, z1) => add(l, x0, -4, z0, x1, 8, z1, null, { vis: 0 });
+
+  // lawns and the pond (scenery; you can only stand on paths, plazas and the far bank)
+  add(l, -14, -1.2, -22, 21, -0.03, 14, 'grass', { deco: true });
+  add(l, 21, -1.2, -22, 72, -0.03, -1, 'grass', { deco: true });
+  add(l, 21, -2, -1, 72, -0.8, 14, 'water', { deco: true });
+  for (const [x, z] of [[2, -3], [6.5, -4.5], [18.5, -3.5], [24, -10.5], [31, -10], [36.5, -9.5], [50, -10.5], [58.5, -5], [-5, 1.5], [14, -6]]) prop(l, 'tree', x, 0, z);
+
+  // path in, and the first plaza: two arms to jump
+  add(l, -2, -1, 0, 8, 0, 4, 'path');
+  hedge(-2.4, -0.4, 8, 0); fence(-2.4, 4, 8, 4.3); fence(-2.4, 0, -2, 4);
+  add(l, 8, -1, -2, 16, 0, 6, 'sidewalk');
+  hedge(7.6, -2.4, 16.4, -2); hedge(7.6, -2, 8, 0); hedge(16, -2, 16.4, 0);
+  hedge(7.6, 4, 8, 6.4, 0.4); hedge(16, 4, 16.4, 6.4, 0.4); fence(8, 6, 16, 6.3);
+  sweeper(l, 12, 0, 2, 3.6, [[0, 0.2, 0.4], [0.5, 0.2, 0.4]], { period: 5 });
+
+  // path to the pond, and the turning bridge to the north bank
+  add(l, 16, -1, 0, 22, 0, 4, 'path');
+  hedge(16.4, -0.4, 22, 0); fence(16.4, 4, 22, 4.3);
+  turnBridge(l, 25, 0, 2, 2.8);
+  add(l, 22, -1, -7, 28, 0, -1, 'lawn');
+  hedge(21.6, -7.4, 22, -1); hedge(21.6, -7.4, 39.5, -7); hedge(28, -3, 28.4, -1, 0.4);
+
+  // along the bank: a goose, a hedge, then three arms
+  add(l, 28, -1, -7, 39.5, 0, -3, 'path');
+  hedge(28, -3, 39.5, -2.6, 0.4);
+  add(l, 29.2, 0, -6.9, 29.8, 0.7, -6.3, null, { look: 'goose', hazard: true, move: { to: [0, 0, 3.2], period: 3.2 } });
+  add(l, 34, 0, -7, 34.6, 0.7, -3, 'hedge');
+  add(l, 39.5, -1, -9, 47.5, 0, -1, 'sidewalk');
+  hedge(39.1, -9.4, 47.9, -9); hedge(39.1, -9, 39.5, -7); hedge(47.5, -9, 47.9, -7);
+  hedge(39.1, -3, 39.5, -0.6, 0.4); hedge(47.5, -3, 47.9, -0.6, 0.4); fence(39.5, -1, 47.5, -0.7);
+  sweeper(l, 43.5, 0, -5, 3.6, [[0, 0.2, 0.4], [1 / 3, 0.2, 0.4], [2 / 3, 0.2, 0.4]], { period: 5.4 });
+
+  // the gate home
+  add(l, 47.5, -1, -7, 56, 0, -3, 'path');
+  hedge(47.9, -7.4, 56.4, -7); hedge(47.9, -3, 56.4, -2.6, 0.4); hedge(56, -7, 56.4, -3);
+  prop(l, 'door', 53, 0, -7, { label: 'HOME', w: 1.6 });
+  prop(l, 'rug', 53, 0, -5, { w: 3.6, d: 3 });
+  l.goal = zone(51, -0.2, -7, 55, 2.5, -3);
+
+  cp(l, null, [4, 0, 2], [0.7, 0, 2]);
+  cp(l, zone(19.2, -0.2, 0, 22, 3, 4), [21, 0, 2], [17.7, 0, 2]);
+  cp(l, zone(22, -0.2, -7, 28, 3, -2.2), [25, 0, -5.6], [25, 0, -2.3]);
+  cp(l, zone(36.5, -0.2, -7, 39.5, 3, -3), [38.4, 0, -5], [35.1, 0, -5]);
+
+  hint(l, zone(-2, -1, 0, 3, 3, 4), 'No refunds. Fine. Home is on the other side of the park.');
+  hint(l, zone(4.5, -1, 0, 8, 3, 4), 'Skipping-rope time: {jump} over the arms as they come round. Go round the post in the middle.');
+  hint(l, zone(18.6, -1, 0, 22, 3, 4), 'The bridge turns. Get on while it points at you, ride it round, and get off on the far bank.');
+  hint(l, zone(22, -1, -7, 28, 3, -2.2), 'Do not make eye contact with the goose.');
+  hint(l, zone(31, -1, -7, 33.6, 3, -3), 'A hedge. Couch up with {up}, then {jump}.');
+  hint(l, zone(36.5, -1, -7, 39.5, 3, -3), 'Three arms this time.');
+  return l;
+}
+
+// ---------------------------------------------------------------- 5: the factory
+function factory() {
+  const l = mk();
+  l.theme = 'factory';
+  l.killY = -7;
+  const T = 3.4;
+  const floor = (x0, x1, z0 = 0, z1 = 4) => add(l, x0, -9, z0, x1, 0, z1, 'metal');
+  const fence = (x0, z0, x1, z1) => add(l, x0, -8, z0, x1, 14, z1, null, { vis: 0 });
+
+  // walls: the walkway is z 0..4, except on the robot's floor, which is z -2..6
+  add(l, -2.3, 0, -0.3, 20, T, 0, 'panel'); add(l, -2.3, 0, 0, -2, T, 4, 'panel');
+  add(l, 19.7, 0, -2.3, 28.3, T, -2, 'panel'); add(l, 19.7, 0, -2, 20, T, 0, 'panel'); add(l, 28, 0, -2, 28.3, T, 0, 'panel');
+  add(l, 28, 0, -0.3, 60.3, T, 0, 'panel'); add(l, 60, 0, 0, 60.3, T, 4, 'panel');
+  fence(-2.3, 4, 20, 4.3); fence(19.7, 4, 20, 6.3); fence(20, 6, 28, 6.3); fence(28, 4, 28.3, 6.3); fence(28, 4, 60.3, 4.3);
+  add(l, 30, -11, -3, 42, -9, 7, 'pit', { deco: true });
+  prop(l, 'sign', 3.4, 2.4, 0, { text: 'COUCH FACTORY', w: 4.6 });
+  prop(l, 'door', -1.1, 0, 0, { label: 'STAFF' });
+
+  // a belt running against you, with a bar to duck and boxes to hop
+  floor(-2, 6);
+  add(l, 6, -9, 0, 16, 0, 4, 'belt', { belt: [-2.2, 0] });
+  bar(l, 9.4, 0, 0, 9.7, 4);
+  add(l, 14.4, 0, 0, 15.1, 0.7, 4, 'crate');
+  floor(16, 20);
+
+  // the robot: one arm to jump, one to duck
+  floor(20, 28, -2, 6);
+  sweeper(l, 24, 0, 2, 3.6, [[0, 0.2, 0.4], [0.5, 1.1, 1.35]], { period: 5.6, post: 1.6 });
+  floor(28, 33);
+
+  // a bridge that is only straight for a moment
+  turnBridge(l, 36, 0, 2, 2.8);
+  floor(39, 43);
+
+  // the express belt to Shipping
+  add(l, 43, -9, 0, 53, 0, 4, 'belt', { belt: [3, 0] });
+  bar(l, 48, 0, 0, 48.3, 4);
+  floor(53, 60);
+  prop(l, 'sign', 57, 2.5, 0, { text: 'SHIPPING', w: 3.6 });
+  prop(l, 'rug', 57, 0, 2, { w: 3.6, d: 3 });
+  l.goal = zone(55, -0.2, 0, 59, 2.5, 4);
+
+  cp(l, null, [3, 0, 2], [-0.3, 0, 2]);
+  cp(l, zone(17.7, -0.2, 0, 20, 3, 4), [19.6, 0, 2], [16.3, 0, 2]);
+  cp(l, zone(29.7, -0.2, 0, 33, 3, 4), [32.4, 0, 2], [29.1, 0, 2]);
+  cp(l, zone(40.7, -0.2, 0, 43, 3, 4), [42.6, 0, 2], [39.3, 0, 2]);
+
+  hint(l, zone(-2, -1, 0, 2.6, 3, 4), 'Nobody wants this couch. Send it back where it came from: Shipping is at the far end.');
+  hint(l, zone(2.6, -1, 0, 6, 3, 4), 'The belt runs against you. Stand still and you go backwards.');
+  hint(l, zone(17.7, -1, 0, 20, 3, 4), 'The robot. {jump} over its low arm; for the high one, both duck with {down}.');
+  hint(l, zone(29.7, -1, 0, 33, 3, 4), 'The bridge only lines up for a moment. Run for it, or ride it all the way round.');
+  hint(l, zone(40.7, -1, 0, 43, 3, 4), 'Express lane. Mind your heads.');
+  return l;
+}
+
 export const LEVELS = [
-  { id: 'stairwell', name: 'The Stairwell', blurb: 'Three flights. Two corners. One couch.', build: stairwell },
-  { id: 'hallway', name: 'The Hallway From Hell', blurb: 'Pipes, boxes, a vacuum and the neighbours.', build: hallway },
-  { id: 'crosstown', name: 'Crosstown Returns', blurb: 'Traffic, trenches and a wrecking ball.', build: crosstown },
+  { id: 'stairwell', name: 'The Stairwell', blurb: 'Three flights. Two corners. One couch.', done: "It's in!", build: stairwell },
+  { id: 'hallway', name: 'The Hallway From Hell', blurb: 'Pipes, boxes, a vacuum and the neighbours.', done: 'Delivered!', build: hallway },
+  { id: 'crosstown', name: 'Crosstown Returns', blurb: 'Traffic, trenches and a wrecking ball.', done: 'No refunds!', build: crosstown },
+  { id: 'park', name: 'Shortcut Through The Park', blurb: 'Spinning arms, a turning bridge and one goose.', done: 'Home again!', build: park },
+  { id: 'factory', name: 'The Couch Factory', blurb: 'Conveyor belts, a robot arm and no way back.', done: 'Shipped!', build: factory },
 ];

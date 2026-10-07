@@ -31,6 +31,10 @@ machine; a syntax error shows up as a page that fails to load in the headless ch
   rigid again, is pushed out of the world, and whatever distance is left between a bean and its
   end of the couch moves the bean. That is why a blocked couch blocks the beans.
 - Fixed 120 Hz steps (`Game.update` accumulates). Movers are a function of the level clock.
+- Nothing in the physics is rotated. A thing that turns (sweeper arms, turning bridges) is a
+  `spin` plus a set of small boxes riding round it (`'orbit'` movers, built by `sweeper()` and
+  `turnBridge()` in `levels.js`); the view draws one model per spin and turns it by `spinAngle`.
+  A box with `belt: [vx, vz]` is a conveyor.
 - Online: each browser owns its own bean and sends its state 30 times a second; the other bean is
   simulated locally from its last input and pulled towards the reported position. The couch is
   never sent, both sides derive it. The host's clock is the level clock. `epoch` counts respawns
@@ -51,6 +55,9 @@ tools/.venv/bin/python tools/cdp.py steps.json [url]                            
 
 - After changing a level or any physics number, run `playtest.py`. If a level's geometry moved,
   its route in `tools/routes.json` (a list of where each bean stands, see `src/dev.js`) moves too.
+  The output lists every bonk (`hits`: step, time, bean, x, z). Route steps marked `dodge` are
+  played by reflex (hop, wait, duck) instead of by timing; `pilot(i, steps, { delay })` starts at
+  another moment of the obstacles' cycles.
 - After a visual change take a screenshot with `shots.py` and look at it.
 - After touching `net.js`, `game.snapshot/applyRemote` or the message handling in `main.js`, run
   `nettest.py`. `tools/duo.html` is the same two-player page for a human.
@@ -65,6 +72,11 @@ tools/.venv/bin/python tools/cdp.py steps.json [url]                            
   the hands are 3.3 apart, a jump clears about 1.3 up and 2.9 along. Holding high puts the couch's
   underside 1.4 above the feet, holding low puts its top at 0.9 and the bean's head at 0.95.
 - A box to duck under uses the `bar()` helper (underside at 1.1); box-pile obstacles are 0.7 high.
+- Sweeper arms to hop are at 0.2 to 0.4 (the couch passes over them at normal height), arms to
+  duck at 1.1 to 1.35. A hop only clears an arm that crosses the bean in under about half a
+  second, so keep arms moving at 3.5 m/s or more where beans are meant to stand (speed = 2π ×
+  radius / period). `GRACE` forgives a clipped toe.
+- A turning bridge of half-length 2.8 needs its banks 3 from the centre (0.2 gap when docked).
 - Colours come from the palette at the top of `style.css` and `COLORS` in `config.js`; textures
   are painted in `view.js` (`PAT`) and laid out in world units, so neighbouring boxes tile.
 - The user plays on an iPad too: check the touch layout (`{"viewport": [w, h], "touch": true}` in a
