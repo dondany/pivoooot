@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- Both players side by side on one machine, linked by a BroadcastChannel instead of WebRTC:
+     http://localhost:8770/tools/duo.html   (add ?manual to step the frames yourself, see nettest.py) -->
+<meta charset="utf-8">
+<title>PIVOOOOT! duo</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2b1a12; display: flex; }
+  iframe { flex: 1; border: 0; height: 100%; min-width: 0; }
+  iframe + iframe { border-left: 3px solid #2b1a12; }
+</style>
+<iframe id="host"></iframe><iframe id="guest"></iframe>
+<script>
+  const extra = location.search.includes('manual') ? '&dev&manual' : '&dev', code = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
+  if (!location.search.includes('blank')) {     // ?blank: leave both frames empty (peertest.py fills them)
+    document.getElementById('host').src = `../index.html?net=bc&auto=host&code=${code}${extra}`;
+    setTimeout(() => { document.getElementById('guest').src = `../index.html?net=bc&auto=join&code=${code}${extra}`; }, 600);
+  }
+</script>

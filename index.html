@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>PIVOOOOT!</title>
+  <meta name="description" content="A two-player online co-op game about carrying a couch. Pivot!">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%23e0693e%27/%3E%3Crect x=%275%27 y=%2713%27 width=%2722%27 height=%2710%27 rx=%273%27 fill=%27%23fbe9c3%27/%3E%3Crect x=%277%27 y=%278%27 width=%2718%27 height=%278%27 rx=%273%27 fill=%27%23fbe9c3%27/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Shrikhand&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="world-ui">
+    <div class="bubble" id="bubble0"></div>
+    <div class="bubble" id="bubble1"></div>
+    <div class="tag" id="tag0"></div>
+    <div class="tag" id="tag1"></div>
+  </div>
+
+  <div id="hud" hidden>
+    <div class="hud-left">
+      <div id="hud-level"></div>
+      <div id="hud-time">0:00.0</div>
+    </div>
+    <div class="hud-right">
+      <button id="btn-music" class="round" title="Music">♪</button>
+      <button id="btn-respawn" class="round" title="Back to the last checkpoint">↺</button>
+      <button id="btn-pause" class="round" title="Menu">☰</button>
+    </div>
+    <div id="hint"></div>
+  </div>
+
+  <div id="touch" hidden>
+    <div class="stick-zone"></div>
+    <div class="stick" hidden><i></i></div>
+    <button data-k="shout" class="tb tb-shout">PIVOT!</button>
+    <button data-k="up" class="tb tb-up">▲</button>
+    <button data-k="down" class="tb tb-down">▼</button>
+    <button data-k="jump" class="tb tb-jump">JUMP</button>
+  </div>
+
+  <section id="menu" class="screen">
+    <h1 class="logo" id="logo" aria-label="PIVOOOOT!"></h1>
+    <p class="tagline">Two beans. One couch. Zero spatial awareness.</p>
+    <div class="card menu-card">
+      <button id="btn-host" class="btn big">Host a game</button>
+      <div class="join-row">
+        <input id="join-code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code">
+        <button id="btn-join" class="btn teal">Join</button>
+      </div>
+      <button id="btn-local" class="btn ghost">Two players, one keyboard</button>
+      <p id="menu-msg" class="msg" role="status"></p>
+    </div>
+    <div class="keys">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+      <span><kbd>Space</kbd> jump</span>
+      <span><kbd>E</kbd> lift</span>
+      <span><kbd>Q</kbd> lower</span>
+      <span><kbd>F</kbd> PIVOT!</span>
+    </div>
+  </section>
+
+  <section id="lobby" class="screen" hidden>
+    <h2 class="title">Where to?</h2>
+    <div class="card status" id="lobby-status"></div>
+    <div class="levels" id="levels"></div>
+    <div class="keys" id="lobby-keys"></div>
+    <button id="btn-leave" class="btn ghost small">← Back</button>
+  </section>
+
+  <section id="pause" class="screen dim" hidden>
+    <h2 class="title">Stuck?</h2>
+    <div class="card menu-card">
+      <button id="btn-resume" class="btn big">Keep carrying</button>
+      <button id="btn-respawn2" class="btn teal">Back to the checkpoint</button>
+      <button id="btn-quit" class="btn ghost">Level select</button>
+    </div>
+  </section>
+
+  <section id="win" class="screen dim" hidden>
+    <h2 class="title" id="win-title">It's in!</h2>
+    <div class="card menu-card">
+      <div class="stats" id="win-stats"></div>
+      <p class="quip" id="win-quip"></p>
+      <button id="btn-next" class="btn big">Next level</button>
+      <button id="btn-levels" class="btn ghost">Level select</button>
+      <p id="win-wait" class="msg"></p>
+    </div>
+  </section>
+
+  <div id="toast"></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
