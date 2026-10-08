@@ -1,6 +1,7 @@
 """The real thing: host and guest in two iframes, connected through PeerJS and WebRTC (needs
-internet for the PeerJS broker). Checks the room opens, the invite link joins it, and the level
-start and the clock reach the guest.
+internet for the PeerJS broker). Checks the room opens, survives losing its link to the broker
+and a stale half-open connection, that the invite link then joins it, and that the level start
+and the clock reach the guest.
 
     tools/.venv/bin/python tools/peertest.py      (needs tools/serve.sh running)
 
@@ -26,9 +27,14 @@ try:
             break
     print("room:", code or "none (" + str(b.js(f"{HOST}.document.getElementById('menu-msg').textContent")) + ")")
     if code:
+        # What a tablet does to a room while its owner is off texting the code: the link to the
+        # broker drops. And what a failed first attempt leaves behind: a connection that never opened.
+        b.js(f"{HOST}.app.net.peer.disconnect(); {HOST}.app.net.conn = {{ close() {{}} }}; 1")
+        time.sleep(0.5)
+        print("host's broker link dropped:", b.js(f"{HOST}.app.net.peer.disconnected"), "- then the guest knocks")
         b.js(f"document.getElementById('guest').src = '../index.html?room={code}'; 1")
         state = None
-        for _ in range(120):
+        for _ in range(200):
             time.sleep(0.2)
             state = b.js(f"(() => {{ const a = {GUEST}.app; return a ? a.mode + '|' + !!(a.net && a.net.open) + '|' + {GUEST}.document.getElementById('menu-msg').textContent : null; }})()")
             if state and (state.startswith("lobby|true") or state.startswith("menu|false|No") or "Could not" in state):

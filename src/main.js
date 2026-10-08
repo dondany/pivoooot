@@ -15,6 +15,7 @@ const app = window.app = {
   mode: 'menu',          // menu | lobby | play | win
   online: false, me: 0,  // me: which bean this browser drives online (host 0, guest 1)
   net: null, game: null, paused: false,
+  run: 0,                // counts level starts; every network message carries it, so strays from the level before are dropped
   view: new View($('scene')), input: new Input(),
 };
 const { view, input } = app;
@@ -80,7 +81,7 @@ function renderLobby() {
   if (!app.online) st.innerHTML = 'Same keyboard. Bean one: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Bean two: the arrow keys.';
   else if (app.me === 1) st.innerHTML = `You're in room <b>${net.code}</b>. Your friend picks the level<span class="dots"></span>`;
   else if (net.open) st.innerHTML = `Your friend is in room <b>${net.code}</b>. Pick a level!`;
-  else st.innerHTML = `Room code <span class="code">${net.code}</span>Tell your friend, or <button id="btn-copy" class="btn small">copy the invite link</button><br>Waiting for them<span class="dots"></span>`;
+  else st.innerHTML = `Room code <span class="code">${net.code}</span>Tell your friend, or <button id="btn-copy" class="btn small">copy the invite link</button><br>${net.signal === false ? 'Lost touch with the matchmaking server. Reconnecting' : 'Keep this page on screen until they are in. Waiting'}<span class="dots"></span>`;
   const copy = $('btn-copy');
   if (copy) copy.onclick = () => {
     const url = location.origin + location.pathname + '?room=' + net.code;
@@ -102,8 +103,13 @@ function renderLobby() {
   $('btn-leave').textContent = app.online ? '← Leave room' : '← Back';
 }
 
+// State and events are only meaningful inside the level they were sent in.
+const send = (t, d) => app.net.send(t, { ...d, r: app.run });
+const stray = d => !d || d.r !== app.run || (app.mode !== 'play' && app.mode !== 'win');
+
 function startLevel(i, fromNet) {
-  if (app.online && !fromNet) app.net.send('start', { level: i });
+  if (app.online && !fromNet) app.net.send('start', { level: i, run: ++app.run });
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // or Space would press the button again
   loadLevel(i);
   app.mode = 'play'; app.paused = false;
   $('hud-level').textContent = LEVELS[i].name;
@@ -116,18 +122,20 @@ function startLevel(i, fromNet) {
 
 // ---------------------------------------------------------------- online
 function wire(net) {
+  net.on('status', text => { if (app.mode === 'menu') $('menu-msg').textContent = text; });
+  net.on('signal', () => { if (app.mode === 'lobby') renderLobby(); });
   net.on('connect', () => { audio.ding(); toast('Your friend is here!'); if (app.mode === 'lobby') renderLobby(); });
   net.on('disconnect', () => {
     if (app.me === 1) return toMenu('Lost the connection to the host.');
     toast('Your friend left.', 3500);
     toLobby();
   });
-  net.on('start', d => startLevel(d.level, true));
+  net.on('start', d => { app.run = d.run; startLevel(d.level, true); });
   net.on('lobby', () => toLobby());
   net.on('st', s => {
     const g = app.game;
-    if (app.mode !== 'play' && app.mode !== 'win') return;
-    g.applyRemote(1 - app.me, s);
+    if (stray(s)) return;
+    g.applyRemote(1 - app.me, s, net.rtt / 2 + 1 / 120);
     lastState = levelClock;
     if (app.me === 1 && !g.done) {                 // the host's clock is the level clock
       const d = s.t + net.rtt / 2 - g.time;
@@ -136,7 +144,7 @@ function wire(net) {
   });
   net.on('ev', d => {
     const g = app.game;
-    if (app.mode !== 'play' && app.mode !== 'win') return;
+    if (stray(d)) return;
     if (d.k === 'shout') shout(1 - app.me, d.kind, true);
     else if (d.k === 'win') g.finish(d.time);
     else if (d.k === 'respawn' && d.e > g.epoch) {
@@ -181,7 +189,7 @@ function respawn(fell) {
   if (!g || g.done) return;
   if (fell) { g.stats.falls++; audio.fall(); }
   g.respawn();
-  if (app.online) app.net.send('ev', { k: 'respawn', e: g.epoch, cp: g.cp, fell });
+  if (app.online) send('ev', { k: 'respawn', e: g.epoch, cp: g.cp, fell });
 }
 
 function shout(i, kind, remote) {
@@ -198,7 +206,7 @@ function shout(i, kind, remote) {
   view.beans[i].yell(len * 0.8);
   if (kind) audio.shut(i, st.level);
   else { audio.shout(i, st.level); g.stats.shouts++; if (st.level >= 3) view.shake = Math.max(view.shake, 0.2); }
-  if (!remote && app.online) app.net.send('ev', { k: 'shout', kind });
+  if (!remote && app.online) send('ev', { k: 'shout', kind });
 }
 
 function hint(text) {
@@ -212,7 +220,7 @@ function hint(text) {
 function win(time) {
   const g = app.game, l = LEVELS[g.index], s = g.stats, m = g.mid;
   app.mode = 'win';
-  if (app.online) app.net.send('ev', { k: 'win', time });
+  if (app.online) send('ev', { k: 'win', time });
   audio.win(); view.confetti(m.x, m.y, m.z);
   $('hint').classList.remove('show');
   const record = saveBest(l.id, time), last = g.index === LEVELS.length - 1;
@@ -265,7 +273,7 @@ function frame(dt) {
 
   if (app.online && app.net.open && (playing || app.mode === 'win')) {
     sendAcc += dt;
-    if (sendAcc >= 1 / NET.RATE) { sendAcc = 0; app.net.send('st', g.snapshot(app.me)); }
+    if (sendAcc >= 1 / NET.RATE - 0.002) { sendAcc = 0; send('st', g.snapshot(app.me)); }
   }
 
   view.update(g, dt, app.mode === 'menu' || app.mode === 'lobby');
@@ -317,6 +325,8 @@ addEventListener('keydown', e => {
 });
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => audio.unlock(), { once: true });
 addEventListener('contextmenu', e => e.preventDefault());
+// A clicked button keeps the keyboard focus, and Space or Enter would then press it again mid-game.
+addEventListener('click', e => { const b = e.target.closest && e.target.closest('button'); if (b) b.blur(); });
 
 let last = 0;
 function loop(now) {

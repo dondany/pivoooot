@@ -8,7 +8,8 @@ export function makePlayer(i) {
   return {
     i, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
     grounded: true, was: true, ground: null, coyote: 0, jbuf: 0, jumpQ: false, jumped: false,
-    hold: P.HOLD_MID, height: P.H, stun: 0, safe: 0, hit: null, hang: false, towing: false, towed: false, face: Math.PI / 2,
+    hold: P.HOLD_MID, height: P.H, stun: 0, safe: 0, hit: null, hang: false, towed: false, face: Math.PI / 2,
+    nx: 0, ny: 0, nz: 0,       // online: what is left of the correction towards its reported position
     local: true, input: { mx: 0, mz: 0, hold: 0 }, ev: [],
   };
 }
@@ -62,8 +63,8 @@ function fits(p, h, boxes) {
   return true;
 }
 
-// Input -> velocity -> position. Collisions come after.
-export function integrate(p, dt, boxes) {
+// Input -> velocity -> position. Collisions come after. `other` is the bean at the far end.
+export function integrate(p, dt, boxes, other) {
   const inp = p.input;
   p.stun = Math.max(0, p.stun - dt);
   p.safe = Math.max(0, p.safe - dt);
@@ -78,7 +79,17 @@ export function integrate(p, dt, boxes) {
   let mx = ctl ? inp.mx : 0, mz = ctl ? inp.mz : 0;
   const ml = Math.hypot(mx, mz);
   if (ml > 1) { mx /= ml; mz /= ml; }
-  const sp = P.RUN * (Math.abs(p.hold - P.HOLD_MID) > 0.15 ? P.HOLD_SLOW : 1) * (p.towing ? P.TOW_SLOW : 1);
+  const sp = P.RUN * (Math.abs(p.hold - P.HOLD_MID) > 0.15 ? P.HOLD_SLOW : 1);
+  if (other && idle(other)) {
+    // Partner just standing there: along the couch you are hauling them, which is slow. Across it
+    // you are swinging your end round them, which is not. (Decided from inputs alone, so both
+    // players' machines always agree on it.)
+    let ux = other.x - p.x, uz = other.z - p.z;
+    const ul = Math.hypot(ux, uz) || 1;
+    ux /= ul; uz /= ul;
+    const along = (mx * ux + mz * uz) * (1 - P.TOW_SLOW);
+    mx -= ux * along; mz -= uz * along;
+  }
   const acc = (p.grounded ? (ctl ? P.ACCEL * (p.towed ? P.TOW_GRIP : 1) : 5) : P.AIR_ACCEL) * dt;
   if (p.grounded || ml > 0.05) {     // in the air with no input, momentum carries
     let ax = mx * sp - p.vx, az = mz * sp - p.vz;
@@ -106,6 +117,9 @@ export function integrate(p, dt, boxes) {
 // Push a bean out of the boxes. Returns whether it ended up standing on something.
 export function collide(p, boxes) {
   const R = P.R, R2 = R * R, H = p.height, core = (R - P.GRACE) * (R - P.GRACE);
+  // On its feet a bean walks up anything a step high. In the air it only gets a toehold (or as far
+  // as one step of falling sinks it into a floor), so nobody jumps onto a bar meant to be ducked.
+  const step = p.was || !p.local ? P.STEP : Math.max(P.LEDGE, -p.vy * P.DT * 1.5);    // (a partner's bean is placed by reports: be lenient)
   // Walls first, so a railing beside a step stops you before the step can lift you.
   for (let i = 0; i < boxes.length; i++) {
     const b = boxes[i];
@@ -113,7 +127,7 @@ export function collide(p, boxes) {
     const dx = p.x - clamp(p.x, b.x0, b.x1), dz = p.z - clamp(p.z, b.z0, b.z1), d2 = dx * dx + dz * dz;
     if (d2 >= R2) continue;
     if (b.hazard && (b.y1 - p.y > P.STEP || d2 < core)) p.hit = b;   // a clipped toe on a sweeper arm is forgiven
-    if (b.y1 - p.y <= P.STEP) continue;                       // a floor or a step: second pass
+    if (b.y1 - p.y <= step) continue;                         // a floor or a step: second pass
     if (p.vy > 0 && p.y + H - b.y0 <= 0.35) continue;         // a ceiling: second pass
     let nx = 0, nz = 0, push;
     if (d2 > 1e-9) { const d = Math.sqrt(d2); nx = dx / d; nz = dz / d; push = R - d; }
@@ -132,7 +146,7 @@ export function collide(p, boxes) {
     if (p.y >= b.y1 || p.y + H <= b.y0) continue;
     const dx = p.x - clamp(p.x, b.x0, b.x1), dz = p.z - clamp(p.z, b.z0, b.z1);
     if (dx * dx + dz * dz >= R2) continue;
-    if (b.y1 - p.y <= P.STEP) {
+    if (b.y1 - p.y <= step) {
       p.y = b.y1;
       if (p.vy <= 0) { p.vy = 0; grounded = true; p.ground = b; }
     } else if (p.vy > 0 && p.y + H - b.y0 <= 0.35) { p.y = b.y0 - H; p.vy = 0; }
@@ -158,6 +172,7 @@ export function snapDown(p, boxes) {
 // Stateless: each step it starts at the two hands, is made rigid again (the rod), is pushed out
 // of the world, and whatever distance it then is from a bean's hands drags that bean along.
 const A = { x: 0, y: 0, z: 0 }, B = { x: 0, y: 0, z: 0 }, e1 = { x: 0, z: 0 }, e2 = { x: 0, z: 0 };
+const lift = [0, 0, 0, 0];    // how far the world has pushed each end this step: A up, A down, B up, B down
 const S0 = (P.ROD - P.COUCH_LEN) / 2 / P.ROD, S1 = 1 - S0;
 
 function rod() {
@@ -172,10 +187,16 @@ function pushOut(s, b) {
   const r = P.COUCH_R;
   const px = A.x + (B.x - A.x) * s, py = A.y + (B.y - A.y) * s, pz = A.z + (B.z - A.z) * s;
   let nx = px - clamp(px, b.x0, b.x1), ny = py - clamp(py, b.y0, b.y1), nz = pz - clamp(pz, b.z0, b.z1);
-  const d2 = nx * nx + ny * ny + nz * nz;
+  const d2 = nx * nx + ny * ny + nz * nz, h2 = nx * nx + nz * nz;
   if (d2 >= r * r) return 0;
   let pen;
-  if (d2 > 1e-10) { const d = Math.sqrt(d2); nx /= d; ny /= d; nz /= d; pen = r - d; }
+  if (h2 > 1e-10) {
+    // Beside the box: out sideways, never up and over or down and under. Beans lift couches,
+    // obstacles do not. So the couch passes only if its underside (or top) really clears.
+    const h = Math.sqrt(h2);
+    pen = Math.sqrt(r * r - ny * ny) - h;
+    nx /= h; nz /= h; ny = 0;
+  } else if (ny !== 0) { pen = r - Math.abs(ny); ny = ny > 0 ? 1 : -1; }    // right above or below: rests on it, or hangs under it
   else {
     const f = [px - b.x0, b.x1 - px, py - b.y0, b.y1 - py, pz - b.z0, b.z1 - pz];
     let m = 0;
@@ -185,6 +206,7 @@ function pushOut(s, b) {
     pen = f[m] + r;
   }
   const wa = 1 - s, wb = s, k = pen / (wa * wa + wb * wb);
+  if (ny > 0) { lift[0] += wa * k; lift[2] += wb * k; } else if (ny < 0) { lift[1] += wa * k; lift[3] += wb * k; }
   A.x += nx * wa * k; A.y += ny * wa * k; A.z += nz * wa * k;
   B.x += nx * wb * k; B.y += ny * wb * k; B.z += nz * wb * k;
   return pen;
@@ -204,10 +226,22 @@ function drag(p, cx, cz, dt) {
   p.vx += clamp(cx / dt, -v, v); p.vz += clamp(cz / dt, -v, v);
 }
 
-// Up and down, the arms give a little around the height the bean is holding at. Past that the
-// couch carries the bean: hanging from it, or (holding it high) hauling a hanging partner up.
+// Up and down, the arms give a little around the height the bean is holding at, plus however far
+// the couch is propped up by something it rests on (up) or kept down by something it is under
+// (down): the hands just follow.
+// A bean on its feet holds its end there, whatever the rest of the couch wants (grip). That is
+// what stops a squeezed couch tilting by itself, and what lets you hold a partner who fell.
+function grip(p, E, up, down) {
+  if (!p.grounded) return;
+  const hi = Math.min(P.REACH_MAX, p.hold + P.ARM_GIVE + up), lo = Math.max(P.REACH_MIN, p.hold - P.ARM_GIVE - down);
+  E.y = clamp(E.y, p.y + lo, p.y + hi);
+}
+
+// A bean in the air goes where its end of the couch takes it: this is how one hangs.
 function arm(p, E, dt) {
-  const rel = E.y - p.y, hi = Math.min(P.REACH_MAX, p.hold + P.ARM_GIVE), lo = Math.max(P.REACH_MIN, p.hold - P.ARM_GIVE);
+  p.hang = false;
+  if (p.grounded) return;
+  const rel = E.y - p.y, hi = P.REACH_MAX, lo = Math.max(P.REACH_MIN, p.hold - P.ARM_GIVE);
   p.hang = false;
   if (rel > hi) {
     const c = rel - hi;
@@ -222,6 +256,7 @@ export function solveCouch(p1, p2, couch, boxes, dt) {
   A.x = p1.x; A.y = p1.y + p1.hold; A.z = p1.z;
   B.x = p2.x; B.y = p2.y + p2.hold; B.z = p2.z;
   const r = P.COUCH_R;
+  lift[0] = lift[1] = lift[2] = lift[3] = 0;
   let hit = 0;
   for (let it = 0; it < 4; it++) {
     rod();
@@ -240,13 +275,12 @@ export function solveCouch(p1, p2, couch, boxes, dt) {
       hit = Math.max(hit, pushOut(s, b), pushOut(S0, b), pushOut(S1, b));
     }
   }
-  rod();
+  for (let k = 0; k < 3; k++) { rod(); grip(p1, A, lift[0], lift[1]); grip(p2, B, lift[2], lift[3]); }
   // Sideways, each bean follows its end of the couch. Hauling a partner who just stands there
   // works, but slowly (see integrate): carrying together is the fast way.
   excess(p1, A, e1); excess(p2, B, e2);
   const i1 = idle(p1), i2 = idle(p2), pull1 = e1.x !== 0 || e1.z !== 0, pull2 = e2.x !== 0 || e2.z !== 0;
   p1.towed = i1 && !i2 && pull1; p2.towed = i2 && !i1 && pull2;
-  p1.towing = p2.towed && pull1; p2.towing = p1.towed && pull2;
   // One bean on the ground, one in the air: along the couch, the one in the air does most of the
   // moving, so a partner who falls off a ledge swings under you instead of pulling you straight in.
   let ux = B.x - A.x, uz = B.z - A.z;

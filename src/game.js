@@ -40,6 +40,7 @@ export class Game {
       p.hold = P.HOLD_MID; p.height = P.H; p.stun = 0; p.safe = P.SAFE;
       p.grounded = p.was = true; p.ground = null; p.jbuf = 0; p.jumpQ = false;
       p.input.mx = p.input.mz = p.input.hold = 0;
+      p.nx = p.ny = p.nz = 0;
       p.face = Math.atan2(s[1 - i][0] - s[i][0], s[1 - i][2] - s[i][2]);
     });
     const [a, b] = this.players, c = this.couch;
@@ -63,6 +64,12 @@ export class Game {
       y1 = Math.max(a.y, b.y) + 5, z0 = Math.min(a.z, b.z) - 4, z1 = Math.max(a.z, b.z) + 4;
     this.near = this.statics.filter(q => q.x1 > x0 && q.x0 < x1 && q.y1 > y0 && q.y0 < y1 && q.z1 > z0 && q.z0 < z1)
       .concat(this.movers);
+    const ease = 1 - Math.exp(-dt * NET.EASE);
+    for (const p of this.players) {
+      if (p.local) continue;
+      p.x += p.nx * ease; p.y += p.ny * ease; p.z += p.nz * ease;
+      p.nx -= p.nx * ease; p.ny -= p.ny * ease; p.nz -= p.nz * ease;
+    }
     this.acc = Math.min(this.acc + dt, 0.1);
     while (this.acc >= P.DT) { this.step(P.DT); this.acc -= P.DT; }
     this.zones();
@@ -74,7 +81,7 @@ export class Game {
     const boxes = this.near, ps = this.players;
     for (const p of ps) {
       p.was = p.grounded; p.hit = null;
-      integrate(p, dt, boxes);
+      integrate(p, dt, boxes, ps[1 - p.i]);
       p.fallV = p.vy;
       p.g1 = collide(p, boxes);
     }
@@ -122,17 +129,29 @@ export class Game {
   snapshot(i) {
     const p = this.players[i], r = v => Math.round(v * 1000) / 1000;
     return { e: this.epoch, c: this.cp, t: r(this.time), p: [r(p.x), r(p.y), r(p.z)], v: [r(p.vx), r(p.vy), r(p.vz)],
-      i: [r(p.input.mx), r(p.input.mz), p.input.hold], h: r(p.hold), s: r(p.stun), f: r(p.face) };
+      i: [r(p.input.mx), r(p.input.mz), p.input.hold], h: r(p.hold), s: r(p.stun), f: r(p.face), g: p.grounded ? 1 : 0 };
   }
 
-  applyRemote(i, s) {
+  // lag: seconds since the report was made. The bean has moved on since, so aim for where it
+  // will be by now, and let update() ease it there instead of jumping.
+  applyRemote(i, s, lag = 0) {
     if (s.e < this.epoch) return;
     const p = this.players[i];
-    const ex = s.p[0] - p.x, ey = s.p[1] - p.y, ez = s.p[2] - p.z;
-    const k = ex * ex + ey * ey + ez * ez > NET.SNAP * NET.SNAP ? 1 : NET.BLEND;
-    p.x += ex * k; p.y += ey * k; p.z += ez * k;
+    const walking = Math.abs(s.i[0]) + Math.abs(s.i[1]) > 0.1 || !s.g;     // a bean letting go of the stick stops almost at once
+    const k = Math.min(NET.MAX_LEAD, lag) * (walking ? 1 : 0.3);
+    const ex = s.p[0] + s.v[0] * k - p.x, ez = s.p[2] + s.v[2] * k - p.z;
+    // Height. In the air the report is run forward like the rest. On the way up the bean is simply
+    // put there (a late take-off looks worse than a pop). On the way down it is only nudged, and
+    // landing is left to the simulation here, which knows where the floor is: a report run forward
+    // can end up under it. On the ground, height is corrected only if it is plainly the wrong floor.
+    const air = !s.g, vy = s.v[1] - (air ? P.GRAVITY * k : 0), rising = air && vy > 0;
+    const ey = s.p[1] + (air ? s.v[1] * k - 0.5 * P.GRAVITY * k * k : 0) - p.y;
+    if (ex * ex + ey * ey + ez * ez > NET.SNAP * NET.SNAP) { p.x += ex; p.y = s.p[1] + 0.05; p.z += ez; p.nx = p.ny = p.nz = 0; }
+    else { p.nx = ex; p.nz = ez; p.ny = air && !rising && !p.grounded ? Math.max(-0.3, Math.min(0.3, ey)) : 0; }
+    if (rising) p.y += ey; else if (!air && Math.abs(ey) > 1) p.y = s.p[1] + 0.05;
     if (s.v[1] > 6 && p.vy < 3) this.events.push({ type: 'jump', i });     // their jump, for the sound and the dust
-    p.vx = s.v[0]; p.vy = s.v[1]; p.vz = s.v[2];
+    p.vx = s.v[0]; p.vz = s.v[2];
+    if (air || p.grounded) p.vy = vy;
     p.input.mx = s.i[0]; p.input.mz = s.i[1]; p.input.hold = s.i[2];
     p.hold += (s.h - p.hold) * 0.5; p.stun = s.s; p.face = s.f;
     if (s.c > this.cp) this.cp = s.c;

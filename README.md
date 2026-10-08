@@ -13,7 +13,8 @@ tools/serve.sh        # http://localhost:8770/   (any static file server works)
 ```
 
 - **Host a game** gives you a four-letter room code and an invite link. Your friend opens the link
-  (or types the code under **Join**) on the same site, and you pick a level.
+  (or types the code under **Join**) on the same site, and you pick a level. On a phone or tablet,
+  come back to the game after sending the code: the room is only findable while it is on screen.
 - **Two players, one keyboard** needs no network.
 
 Both players have to load the game from the same address. For a friend who is not on your network,
@@ -34,7 +35,8 @@ put the folder on any static host (GitHub Pages works).
 
 - You are joined by the couch. Walk together and it is light; drag a partner who is standing
   still and you crawl at 40% speed.
-- The couch collides with the world along its whole length. Holding it **high** clears railings,
+- The couch collides with the world along its whole length, and it is exactly as high as you
+  hold it: walking it into a box does not make it climb. Holding it **high** clears railings,
   desks and boxes; holding it **low** (you duck too) gets under pipes. One end high and one low
   tilts it, which makes it shorter on the ground: that is the pivot.
 - Yelling "PIVOT!" does nothing useful. Yelling it again within 2.5 seconds makes it longer.

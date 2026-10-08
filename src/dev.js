@@ -75,6 +75,10 @@ export function pilot(index, steps, opts = {}) {
       if (!begun || stepT === 0) { begun = true; if (s.ja) a.jumpQ = true; if (s.jb) b.jumpQ = true; }
       const ta = drive(a, s.a, tol), tb = drive(b, s.b, tol);
       there = ta && tb;
+      // A bean that has arrived keeps leaning the way its partner is still going, so it counts as
+      // carrying, not as dead weight (hauling a standing partner is slow by design).
+      if (ta && !tb) { a.input.mx = b.input.mx * 0.2; a.input.mz = b.input.mz * 0.2; }
+      if (tb && !ta) { b.input.mx = a.input.mx * 0.2; b.input.mz = a.input.mz * 0.2; }
       stepT += dt;
     }
     if (s.dodge) reflexes(g);

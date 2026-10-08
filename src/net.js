@@ -24,7 +24,7 @@ export class Net {
     this.handlers = {};
     this.open = false; this.role = null; this.code = '';
     this.rtt = 0.08;
-    this.pinger = setInterval(() => this.send('ping', performance.now()), 2000);
+    this.pinger = setInterval(() => this.send('ping', performance.now()), 1000);
     this.on('ping', t => this.send('pong', t));
     this.on('pong', t => { this.rtt += ((performance.now() - t) / 1000 - this.rtt) * 0.3; });
   }
@@ -48,10 +48,11 @@ export class Net {
       try {
         await new Promise((res, rej) => {
           const peer = new window.Peer(NET.PREFIX + code);
-          peer.on('open', () => { this.peer = peer; res(); });
+          peer.on('open', () => { if (!this.peer) { this.peer = peer; res(); } });
           peer.on('error', e => { if (!this.peer) { peer.destroy(); rej(e); } else this.peerError(e); });
-          peer.on('connection', c => { if (this.conn) c.close(); else this.attach(c); });
+          peer.on('connection', c => this.accept(c));
         });
+        this.watchSignal();
         return (this.code = code);
       } catch (e) {
         if (e.type !== 'unavailable-id') throw new Error('Could not reach the matchmaking server.');
@@ -60,34 +61,86 @@ export class Net {
     throw new Error('Could not find a free room code. Try again.');
   }
 
-  // Resolves once connected to the host's room.
+  accept(c) {
+    if (this.open) { c.on('open', () => c.close()); return; }       // the room is full
+    if (this.conn) { try { this.conn.close(); } catch { /* already gone */ } }   // a knock that never got through must not block the next
+    this.attach(c);
+  }
+
+  // The link to the broker is what makes a room findable. Phones and tablets drop it whenever the
+  // browser is not on screen (say, while texting the code to a friend), so put it back whenever it
+  // goes, and freshen it when the page comes back into view.
+  watchSignal() {
+    const peer = this.peer;
+    let hiddenAt = 0;
+    const again = () => { if (this.peer === peer && !peer.destroyed && peer.disconnected) { try { peer.reconnect(); } catch { /* next round */ } } };
+    this.signal = true;
+    peer.on('disconnected', () => { this.signal = false; this.emit('signal'); });
+    peer.on('open', () => { this.signal = true; this.emit('signal'); });
+    this.keep = setInterval(again, 2000);
+    this.onShow = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (!this.open && hiddenAt && Date.now() - hiddenAt > 4000 && !peer.disconnected && !peer.destroyed) {
+        try { peer.disconnect(); } catch { /* fine */ }             // the old socket may be dead without knowing it
+      }
+      hiddenAt = 0;
+      setTimeout(again, 300);
+    };
+    document.addEventListener('visibilitychange', this.onShow);
+    addEventListener('pageshow', this.onShow);
+    addEventListener('online', this.onShow);
+  }
+
+  // Resolves once connected to the host's room. Keeps knocking for half a minute: the room may be
+  // unreachable for a moment (see watchSignal), and a first handshake does not always get through.
   async join(code) {
     this.role = 'guest'; this.code = code;
     if (this.kind === 'bc') { this.openChannel(code); return; }
     await loadPeerJs();
     await new Promise((res, rej) => {
-      const fail = msg => { this.close(); rej(new Error(msg)); };
-      const timer = setTimeout(() => fail('No answer from room ' + code + '.'), 15000);
+      let done = false, seen = false, timer;
+      const finish = err => {
+        if (done) return;
+        done = true; clearTimeout(timer); clearTimeout(total);
+        if (err) { this.close(); rej(new Error(err)); } else res();
+      };
+      const total = setTimeout(() => finish(seen
+        ? `Room ${code} is there, but the connection would not go through. A firewall or VPN on either side can block it.`
+        : `No room called ${code}. Check the code, and ask the host to keep the game on their screen.`), 30000);
       const peer = this.peer = new window.Peer();
-      peer.on('open', () => {
+      const knock = () => {
+        if (done || peer.destroyed) return;
+        seen = true;                    // until the broker says otherwise
         const c = peer.connect(NET.PREFIX + code, { reliable: true, serialization: 'json' });
         this.attach(c);
-        c.on('open', () => { clearTimeout(timer); res(); });
-      });
+        c.on('open', () => finish());
+        clearTimeout(timer);
+        timer = setTimeout(() => { this.emit('status', `Still knocking on room ${code}...`); try { c.close(); } catch { /* gone */ } knock(); }, 8000);
+      };
+      peer.on('open', knock);
       peer.on('error', e => {
         if (this.open) return this.peerError(e);
-        clearTimeout(timer);
-        fail(e.type === 'peer-unavailable' ? 'No room called ' + code + '. Check the code?' : 'Could not connect (' + e.type + ').');
+        if (e.type === 'peer-unavailable') {
+          seen = false;
+          this.emit('status', `Can't see room ${code} yet. Still trying...`);
+          clearTimeout(timer); timer = setTimeout(knock, 2500);
+        } else if (e.type !== 'network' && e.type !== 'disconnected') finish('Could not connect (' + e.type + ').');
       });
+      peer.on('disconnected', () => { if (!done && !peer.destroyed) { try { peer.reconnect(); } catch { /* the timer ends it */ } } });
     });
   }
 
   attach(c) {
     this.conn = c;
-    c.on('open', () => { this.open = true; this.emit('connect'); });
-    c.on('data', m => { if (m && m.t) this.emit(m.t, m.d); });
-    c.on('close', () => this.lost());
-    c.on('error', () => this.lost());
+    const gone = () => {
+      if (this.conn !== c) return;
+      this.conn = null;
+      if (this.open) { this.open = false; this.emit('disconnect'); }
+    };
+    c.on('open', () => { if (this.conn !== c) { c.close(); return; } this.open = true; this.emit('connect'); });
+    c.on('data', m => { if (this.conn === c && m && m.t) this.emit(m.t, m.d); });
+    c.on('close', gone);
+    c.on('error', gone);
   }
 
   peerError(e) { if (e.type === 'network' || e.type === 'disconnected') return; console.warn('peer error', e.type); }
@@ -114,7 +167,11 @@ export class Net {
   }
 
   close() {
-    clearInterval(this.pinger); clearInterval(this.knock);
+    clearInterval(this.pinger); clearInterval(this.knock); clearInterval(this.keep);
+    if (this.onShow) {
+      document.removeEventListener('visibilitychange', this.onShow);
+      removeEventListener('pageshow', this.onShow); removeEventListener('online', this.onShow);
+    }
     this.handlers = {};
     if (this.bc) { this.bc.postMessage({ from: this.role, t: '_bye' }); this.bc.close(); }
     if (this.peer) this.peer.destroy();

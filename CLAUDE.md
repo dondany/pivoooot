@@ -26,19 +26,34 @@ machine; a syntax error shows up as a page that fails to load in the headless ch
 - World = axis-aligned boxes. +x east (screen right), +z south (towards the camera), +y up. The
   camera always looks from the south, so walls on the south side of a walkway are cut away
   (`vis: 0` = invisible but solid, `vis: 1.3` = drawn low).
-- A bean is an upright cylinder that walks up anything lower than `STEP`. The couch is a capsule
-  between the two beans' hands. It is **stateless**: every step it starts at the hands, is made
-  rigid again, is pushed out of the world, and whatever distance is left between a bean and its
-  end of the couch moves the bean. That is why a blocked couch blocks the beans.
+- A bean is an upright cylinder that walks up anything lower than `STEP` (in the air only
+  `LEDGE`, so nobody jumps onto a bar meant to be ducked). The couch is a capsule between the two
+  beans' hands. It is **stateless**: every step it starts at the hands, is made rigid again, is
+  pushed out of the world, and whatever distance is left between a bean and its end of the couch
+  moves the bean. That is why a blocked couch blocks the beans.
+- The couch is where the hands hold it. The world only ever pushes it **sideways** (it cannot
+  ride up over a box or squeeze under a bar by being walked into one); a bean on its feet keeps
+  its end within `ARM_GIVE` of its hold height (`grip`), so a squeezed couch does not tilt by
+  itself and a standing bean is never lifted by it. It can rest on something it was lowered onto
+  (the hands follow). Only a bean in the air is carried by its end of the couch (hanging).
+- Walking along the couch while the partner stands still is hauling: `TOW_SLOW`. It is decided
+  from the two inputs alone, so both machines agree.
 - Fixed 120 Hz steps (`Game.update` accumulates). Movers are a function of the level clock.
 - Nothing in the physics is rotated. A thing that turns (sweeper arms, turning bridges) is a
   `spin` plus a set of small boxes riding round it (`'orbit'` movers, built by `sweeper()` and
   `turnBridge()` in `levels.js`); the view draws one model per spin and turns it by `spinAngle`.
   A box with `belt: [vx, vz]` is a conveyor.
-- Online: each browser owns its own bean and sends its state 30 times a second; the other bean is
-  simulated locally from its last input and pulled towards the reported position. The couch is
-  never sent, both sides derive it. The host's clock is the level clock. `epoch` counts respawns
-  so stale states from before one are ignored.
+- Online: each browser owns its own bean and sends its state 60 times a second; the other bean is
+  simulated locally from its last input and eased (`NET.EASE`) towards where the report says it
+  is **by now** (the report run forward by half the round trip, `Game.applyRemote`). Height is the
+  exception: taken from reports only on the way up in a jump, never eased into a floor. The couch
+  is never sent, both sides derive it. The host's clock is the level clock.
+- Every state and event message carries `app.run` (bumped by the host at each level start) and
+  is dropped if it is from another run; `epoch` counts respawns inside a run. Without the run
+  tag, the last messages of one level corrupt the next (checkpoint index, positions).
+- The room must survive a host on a tablet: `net.js` puts the broker link back when it drops or
+  the page returns to view, never lets a half-open connection block the next knock, and a
+  joining guest keeps knocking for 30 s. `peertest.py` exercises all three.
 - `game.events` is the only way the simulation talks to the rest (sounds, toasts, network).
 
 ## Testing
@@ -60,7 +75,8 @@ tools/.venv/bin/python tools/cdp.py steps.json [url]                            
   another moment of the obstacles' cycles.
 - After a visual change take a screenshot with `shots.py` and look at it.
 - After touching `net.js`, `game.snapshot/applyRemote` or the message handling in `main.js`, run
-  `nettest.py`. `tools/duo.html` is the same two-player page for a human.
+  `nettest.py` (it also delays every message by 100 ms and measures how far the two sides'
+  ideas of each bean drift apart) and `peertest.py`. `tools/duo.html` is the same two-player page for a human.
 - Headless Chrome hardly runs `requestAnimationFrame`: open pages with `?dev&manual` and step
   them with `dev.run(seconds, [inputA, inputB])`. Other URL switches: `?level=N` (straight into a
   level on one keyboard), `?room=CODE` (join), `?net=bc` (BroadcastChannel instead of PeerJS).
@@ -71,7 +87,9 @@ tools/.venv/bin/python tools/cdp.py steps.json [url]                            
 - A new obstacle that blocks must leave a way through: the couch body is 2.4 long and 0.8 thick,
   the hands are 3.3 apart, a jump clears about 1.3 up and 2.9 along. Holding high puts the couch's
   underside 1.4 above the feet, holding low puts its top at 0.9 and the bean's head at 0.95.
-- A box to duck under uses the `bar()` helper (underside at 1.1); box-pile obstacles are 0.7 high.
+- A box to duck under uses the `bar()` helper (underside at 1.2: a couch held low and level clears
+  it by 0.3, a tilted one may not); box-pile obstacles are 0.7 high. Leave 4 between a bar and a
+  box pile, or one bean is on the pile (couch tilted up) while the other is under the bar.
 - Sweeper arms to hop are at 0.2 to 0.4 (the couch passes over them at normal height), arms to
   duck at 1.1 to 1.35. A hop only clears an arm that crosses the bean in under about half a
   second, so keep arms moving at 3.5 m/s or more where beans are meant to stand (speed = 2π ×

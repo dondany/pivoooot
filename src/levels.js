@@ -23,12 +23,13 @@ const cp = (l, z, a, b) => l.cps.push({ zone: z, spawn: [a, b] });
 const hint = (l, z, text) => l.hints.push({ zone: z, text });
 const prop = (l, type, x, y, z, o) => l.props.push({ type, x, y, z, ...o });
 
-// A bar to duck under, 1.1 above floor level y, with a post at each end so it reads as a barrier.
+// A bar to duck under, its underside 1.2 above floor level y, with a post at each end so it reads
+// as a barrier. A couch held low passes under with 0.3 to spare; tilt it and that is soon gone.
 function bar(l, x0, y, z0, x1, z1) {
-  add(l, x0, y + 1.1, z0, x1, y + 1.4, z1, 'pipe');
+  add(l, x0, y + 1.2, z0, x1, y + 1.5, z1, 'pipe');
   const o = { deco: true };
-  if (z1 - z0 > x1 - x0) { add(l, x0, y, z0, x1, y + 1.1, z0 + 0.14, 'pipe', o); add(l, x0, y, z1 - 0.14, x1, y + 1.1, z1, 'pipe', o); }
-  else { add(l, x0, y, z0, x0 + 0.14, y + 1.1, z1, 'pipe', o); add(l, x1 - 0.14, y, z0, x1, y + 1.1, z1, 'pipe', o); }
+  if (z1 - z0 > x1 - x0) { add(l, x0, y, z0, x1, y + 1.2, z0 + 0.14, 'pipe', o); add(l, x0, y, z1 - 0.14, x1, y + 1.2, z1, 'pipe', o); }
+  else { add(l, x0, y, z0, x0 + 0.14, y + 1.2, z1, 'pipe', o); add(l, x1 - 0.14, y, z0, x1, y + 1.2, z1, 'pipe', o); }
 }
 
 // ---- things that turn about a vertical axis ----
@@ -150,7 +151,7 @@ function hallway() {
   add(l, -0.3, 0, 0, 0, T, 2.4, 'paperB');
   add(l, -0.3, 0, -0.3, 12.4, T, 0, 'paperB');
   add(l, -0.3, 0, 2.4, 16.7, T, 2.7, null, { vis: 0 });
-  add(l, 5.9, 0, 0.1, 6.5, 0.22, 0.7, null, { look: 'roomba', hazard: true, move: { to: [0, 0, 1.6], period: 2.6 } });
+  add(l, 5.9, 0, 0.1, 6.5, 0.22, 0.7, null, { look: 'roomba', hazard: true, move: { to: [0, 0, 1.6], period: 2.2 } });
   bar(l, 8.8, 0, 0, 9.1, 2.4);
   bar(l, 10.4, 0, 0, 10.7, 2.4);
   prop(l, 'door', 2.6, 0, 0, { label: '2A' });
@@ -168,7 +169,7 @@ function hallway() {
   add(l, 14.1, 0, -10.7, 14.4, T, -2.3, 'paperB', { vis: 1.3 });
   add(l, 16.4, 0, -8, 16.7, T, 2.4, 'paperB', { vis: 1.3 });
   add(l, 14.4, 0, -3.6, 16.4, 0.7, -3, 'crate');
-  bar(l, 14.4, 0, -6.3, 16.4, -6);
+  bar(l, 14.4, 0, -7.5, 16.4, -7.2);
 
   // corridor C, heading east, with two doors that fly open
   add(l, 14.4, -0.5, -10.4, 34, 0, -8, 'tile');
@@ -176,7 +177,7 @@ function hallway() {
   add(l, 16.4, 0, -8, 34.3, T, -7.7, 'paperB', { vis: 0.3 });
   add(l, 34, 0, -10.4, 34.3, T, -8, 'paperB');
   const door = (x, phase) => add(l, x, 0, -11.9, x + 1.2, 2.1, -10.5, null,
-    { look: 'door', hazard: true, move: { to: [0, 0, 1.5], period: 3.2, phase, mode: 'slam' } });
+    { look: 'door', hazard: true, move: { to: [0, 0, 1.5], period: 2.8, phase, mode: 'slam' } });
   door(20.2, 0); door(24.8, 0.5);
   prop(l, 'frame', 22.9, 1.7, -10.4, { c: '#e9b44c' });
   prop(l, 'frame', 28, 1.7, -10.4, { c: '#1fb8a6' });
@@ -192,7 +193,7 @@ function hallway() {
   hint(l, zone(6.6, -1, 0, 8.4, 3, 2.4), 'Two pipes. Hold {down} and keep it down.');
   hint(l, zone(10.8, -1, 0, 14, 3, 2.4), 'It will never fit round that corner... unless you both lift with {up} and swing it over the desk.');
   hint(l, zone(14.4, -1, -2.8, 16.4, 3, -0.4), 'Up for the boxes, straight back down for the pipe.');
-  hint(l, zone(14.4, -1, -8, 16.4, 3, -6.6), 'A real corner now. One of you goes in deep, then... {shout}');
+  hint(l, zone(14.4, -1, -7, 16.4, 3, -5.4), 'After the pipe, a real corner. One of you goes in deep, then... {shout}');
   hint(l, zone(16.6, -1, -10.4, 19.6, 3, -8), 'Angry neighbours. Time the doors, or hug the near wall.');
   return l;
 }
@@ -218,7 +219,7 @@ function crosstown() {
   add(l, 13.2, -1, -18, 16.8, 0, 18, 'sidewalk');
   add(l, 16.8, -1, -18, 20, -0.1, 18, 'asphalt');
   const car = (x, dir, phase, c) => add(l, x - 0.95, -0.1, dir > 0 ? -19 : 15.2, x + 0.95, 1.15, dir > 0 ? -15.2 : 19, null,
-    { look: 'car', c, hazard: true, move: { to: [0, 0, 34 * dir], period: 5.6, phase, mode: 'loop' } });
+    { look: 'car', c, hazard: true, move: { to: [0, 0, 34 * dir], period: 5, phase, mode: 'loop' } });
   car(11.6, 1, 0, '#e0693e'); car(11.6, 1, 0.5, '#2a9d8f');
   car(18.4, -1, 0.3, '#e9b44c'); car(18.4, -1, 0.8, '#8a5fbf');
   prop(l, 'zebra', 15, -0.09, 2);
@@ -235,7 +236,7 @@ function crosstown() {
   add(l, 36.8, -9, 0.6, 41.2, 0, 3.4, 'dirt');
   add(l, 41.2, -0.3, 1.5, 47, 0, 2.5, 'plank');
   add(l, 42.9, 0.15, -2.6, 44.1, 1.35, -1.4, null,
-    { look: 'ball', hazard: true, move: { to: [0, 0, 6.4], period: 4 } });
+    { look: 'ball', hazard: true, move: { to: [0, 0, 6.4], period: 3.4 } });
   add(l, 47, -9, 0.6, 52, 0, 3.4, 'dirt');
   add(l, 52, -0.4, 0.7, 56.8, 0, 3.3, null, { look: 'lift', move: { to: [3.2, 0, 0], period: 7 } });
   prop(l, 'crane', 44, 0, -7);
@@ -300,7 +301,7 @@ function park() {
   // along the bank: a goose, a hedge, then three arms
   add(l, 28, -1, -7, 39.5, 0, -3, 'path');
   hedge(28, -3, 39.5, -2.6, 0.4);
-  add(l, 29.2, 0, -6.9, 29.8, 0.7, -6.3, null, { look: 'goose', hazard: true, move: { to: [0, 0, 3.2], period: 3.2 } });
+  add(l, 29.2, 0, -6.9, 29.8, 0.7, -6.3, null, { look: 'goose', hazard: true, move: { to: [0, 0, 3.2], period: 2.6 } });
   add(l, 34, 0, -7, 34.6, 0.7, -3, 'hedge');
   add(l, 39.5, -1, -9, 47.5, 0, -1, 'sidewalk');
   hedge(39.1, -9.4, 47.9, -9); hedge(39.1, -9, 39.5, -7); hedge(47.5, -9, 47.9, -7);
